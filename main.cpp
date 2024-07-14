@@ -1,16 +1,35 @@
 #include <stdint.h>
 
+#include "drawing/font.hh"
 #include "third_party/nugget/common/syscalls/syscalls.h"
 #include "third_party/nugget/common/util/encoder.hh"
 #include "third_party/nugget/psyqo/application.hh"
-#include "third_party/nugget/psyqo/font.hh"
 #include "third_party/nugget/psyqo/gpu.hh"
+#include "third_party/nugget/psyqo/primitives/lines.hh"
+#include "third_party/nugget/psyqo/primitives/rectangles.hh"
 #include "third_party/nugget/psyqo/scene.hh"
 
 #include "cheat_to_code.h"
 
 namespace
 {
+    constexpr psyqo::Vertex xy(int16_t x, int16_t y)
+    {
+        psyqo::Vertex v;
+        v.x = x;
+        v.y = y;
+
+        return v;
+    }
+
+    const psyqo::Prim::Line line(psyqo::Color c, psyqo::Vertex a, psyqo::Vertex b)
+    {
+        psyqo::Prim::Line l(c);
+        l.pointA = a;
+        l.pointB = b;
+
+        return l;
+    }
 
     using namespace Mips::Encoder;
     union Cheat
@@ -32,7 +51,7 @@ namespace
         void createScene() override;
 
     public:
-        psyqo::Font<> m_font;
+        OpenCheat::Font<> m_font;
     };
 
     // And we need at least one scene to be created.
@@ -45,6 +64,20 @@ namespace
         // need to keep track of our state here.
         uint8_t m_anim = 0;
         bool m_direction = true;
+
+    private:
+        struct Background2
+        {
+            uint32_t polyLineCmd = 0x48000000;
+            psyqo::Vertex polyLinePointA;
+            psyqo::Vertex polyLinePointB;
+            psyqo::Vertex polyLinePointC;
+            psyqo::Vertex polyLinePointD;
+            psyqo::Vertex polyLinePointE;
+            const uint32_t polyLineEndCmd = 0x50005000;
+            psyqo::Prim::TPage darkenAreaTPage;
+            psyqo::Prim::Rectangle darkenArea;
+        } m_background2;
     };
 
     // We're instantiating the two objects above right now.
@@ -57,7 +90,7 @@ void installKernelPatch()
 {
     uint8_t code_in[][6] = {
         {0x96, 0x01, 0x08, 0x80, 0x0C, 0x00}, // Ridge Racer - Have Black Car	80080196 000C
-        };
+    };
 
     uint32_t code_out[64];
     syscall_memset(code_out, 0, sizeof(code_out));
@@ -66,12 +99,12 @@ void installKernelPatch()
     constexpr uint32_t kernelPatchDest = 0xc380;
     __builtin_memcpy(reinterpret_cast<void *>(kernelPatchDest), code_out,
                      code_size);
-    
+
     // GetB0Table
     register int n asm("t1") = 0x57;
     __asm__ volatile("" : "=r"(n) : "r"(n));
     uint32_t *b0table = ((uint32_t * (*)())0xb0)();
-     // GetB0Table()
+    // GetB0Table()
 
     b0table[0x17] = kernelPatchDest;
 }
@@ -91,7 +124,7 @@ static const uint32_t shellReplacement[] = {
         rfe(),
     };
 
-    __builtin_memcpy(reinterpret_cast<void *>(0x40), breakHandler,
+    __builtin_memcpy(reinterpret_cast<void *>(0xA0000040), breakHandler,
                      sizeof(breakHandler));
     __builtin_memcpy(reinterpret_cast<void *>(0x80030000), shellReplacement,
                      sizeof(shellReplacement));
@@ -109,6 +142,9 @@ static const uint32_t shellReplacement[] = {
         li    $t1, 0x44
         jr    $t0
     )");
+    while (1)
+        asm("");
+    __builtin_unreachable();
 }
 
 void Hello::prepare()
@@ -119,41 +155,52 @@ void Hello::prepare()
         .set(psyqo::GPU::ColorMode::C15BITS)
         .set(psyqo::GPU::Interlace::PROGRESSIVE);
     gpu().initialize(config);
-
-    reboot();
+    // reboot();
 }
 
 void Hello::createScene()
 {
-    m_font.uploadSystemFont(gpu());
+    m_font.upload(gpu());
     pushScene(&helloScene);
 }
 
 void HelloScene::frame()
 {
-    if (m_anim == 0)
-    {
-        m_direction = true;
-    }
-    else if (m_anim == 255)
-    {
-        m_direction = false;
-    }
     psyqo::Color bg{{.r = 0, .g = 64, .b = 91}};
     bg.r = m_anim;
     hello.gpu().clear(bg);
-    if (m_direction)
-    {
-        m_anim++;
-    }
-    else
-    {
-        m_anim--;
-    }
 
-    psyqo::Color c = {{.r = 255, .g = 255, .b = uint8_t(255 - m_anim)}};
-    hello.m_font.print(hello.gpu(), "Hello World!", {{.x = 16, .y = 32}}, c);
-    ramsyscall_printf("0x80080196 = %04X\n", *(uint16_t *)0x80080196);
+    static const auto WHITE = psyqo::Color{{.r = 255, .g = 255, .b = 255}};
+    static const auto GRAY = psyqo::Color{{.r = 48, .g = 48, .b = 48}};
+
+    // Box
+    /*hello.gpu().sendPrimitive(line(WHITE, xy(20, 40), xy(300, 40)));   // Top
+    hello.gpu().sendPrimitive(line(WHITE, xy(300, 40), xy(300, 200))); // Right
+    hello.gpu().sendPrimitive(line(WHITE, xy(20, 200), xy(300, 200))); // Bottom
+    hello.gpu().sendPrimitive(line(WHITE, xy(20, 40), xy(20, 200)));   // Left*/
+    // hello.gpu().sendPrimitive(line(WHITE, xy(20, 40), xy(300, 40))); // Top
+    psyqo::Color lineColor = {{.r = 139, .g = 173, .b = 255}};
+    m_background2.polyLineCmd |= lineColor.packed;
+    m_background2.polyLinePointA = xy(9, 9);
+    m_background2.polyLinePointB = xy(310, 9);
+    m_background2.polyLinePointC = xy(310, 230);
+    m_background2.polyLinePointD = xy(9, 230);
+    m_background2.polyLinePointE = xy(9, 9);
+    m_background2.darkenAreaTPage.attr
+        .set(psyqo::Prim::TPageAttr::FullBackSubFullFront)
+        .enableDisplayArea();
+    m_background2.darkenArea.setColor({{.r = 32, .g = 32, .b = 32}})
+        .setSemiTrans();
+    m_background2.darkenArea.position = xy(10, 10);
+    m_background2.darkenArea.size = xy(300, 220);
+
+        gpu().sendPrimitive(m_background2);
+
+    for(int i = 0; i < 27; i++)
+    {
+        hello.m_font.print(hello.gpu(), "Hello World!", xy(12, 12 + (8*i)), WHITE);
+    }
+    
 }
 
 int main() { return hello.run(); }

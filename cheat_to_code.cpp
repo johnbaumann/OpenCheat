@@ -1,6 +1,7 @@
 #include "cheat_to_code.h"
 
 #include "third_party/nugget/common/util/encoder.hh"
+#include "syscalls.h"
 
 using namespace Mips;
 
@@ -16,7 +17,7 @@ T getValue(const uint8_t *&buffer)
     return ret;
 }
 
-static void appendCode(uint32_t code, uint32_t *&ptr, uint32_t &size)
+void appendCode(uint32_t code, uint32_t *&ptr, uint32_t &size)
 {
     if (ptr)
         *ptr++ = code;
@@ -203,15 +204,6 @@ unsigned cheat_to_code(const void *cheat_, unsigned size, void *code_)
             condition = 0;
         }
     };
-
-    // GetB0Table()
-    register int n asm("t1") = 0x57;
-    __asm__ volatile("" : "=r"(n) : "r"(n));
-    uint32_t *b0table = ((uint32_t * (*)())0xb0)();
-    // GetB0Table()
-    uint32_t rfeHandler = b0table[0x17];  // Get original RFE handler
-    appendCode(Encoder::lui(Encoder::Reg::RA, rfeHandler >> 16), code, ret);
-    appendCode(Encoder::ori(Encoder::Reg::RA, Encoder::Reg::RA, rfeHandler & 0xFFFF), code, ret);
 
     while (size--)
     {

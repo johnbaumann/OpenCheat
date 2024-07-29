@@ -212,7 +212,26 @@ unsigned cheat_to_code(const void *cheat_, unsigned size, void *code_)
 
         switch (a >> 24)
         {
-        case 0x30:
+        case 0x30: // 8-bit write: address = xx
+        {
+            unsigned oldRet = ret;
+            uint32_t addr = 0x80000000 | (a & 0xffffff);
+            int16_t d = 0;
+            unsigned src = findOffset(regs, addr, d);
+            if (src == NUM_REGS)
+            {
+                src = loadValue(regs, addr, code, ret);
+                d = 0;
+            }
+            lockReg(regs, src);
+            unsigned dst = loadValue(regs, v, code, ret);
+            unlockReg(regs, src);
+
+            applyCondition(oldRet, 1);
+            appendCode(Encoder::sh(s_mapping[dst], d, s_mapping[src]), code, ret); // To-do: Shouldn't this be sb?
+        }
+        break;
+        case 0x80: // 16-bit write: *address = xxxx
         {
             unsigned oldRet = ret;
             uint32_t addr = 0x80000000 | (a & 0xffffff);
@@ -231,7 +250,159 @@ unsigned cheat_to_code(const void *cheat_, unsigned size, void *code_)
             appendCode(Encoder::sh(s_mapping[dst], d, s_mapping[src]), code, ret);
         }
         break;
-        case 0x80:
+        case 0xd0: // 16-bit conditional, equal: if (xxxx == *address) { ... }
+        {
+            uint32_t addr = 0x80000000 | (a & 0xffffff);
+            int16_t d = 0;
+            unsigned src = findOffset(regs, addr, d);
+            if (src == NUM_REGS)
+            {
+                src = loadValue(regs, addr, code, ret);
+                d = 0;
+            }
+            appendCode(Encoder::lh(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
+            unsigned oldRet = ret;
+            unsigned dst = loadValue(regs, v, code, ret);
+            if (ret == oldRet)
+                appendCode(Encoder::nop(), code, ret);
+            appendCode(Encoder::subu(Encoder::Reg::AT, Encoder::Reg::AT, s_mapping[dst]), code, ret);
+            condition = Encoder::beq(Encoder::Reg::AT, Encoder::Reg::R0, 0);
+        }
+        break;
+        case 0xd1: // 16-bit conditional, not equal: if (xxxx != *address) { ... }
+        {
+            uint32_t addr = 0x80000000 | (a & 0xffffff);
+            int16_t d = 0;
+            unsigned src = findOffset(regs, addr, d);
+            if (src == NUM_REGS)
+            {
+                src = loadValue(regs, addr, code, ret);
+                d = 0;
+            }
+            appendCode(Encoder::lh(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
+            unsigned oldRet = ret;
+            unsigned dst = loadValue(regs, v, code, ret);
+            if (ret == oldRet)
+                appendCode(Encoder::nop(), code, ret);
+            appendCode(Encoder::subu(Encoder::Reg::AT, Encoder::Reg::AT, s_mapping[dst]), code, ret);
+            condition = Encoder::bne(Encoder::Reg::AT, Encoder::Reg::R0, 0);
+        }
+        break;
+        case 0xd2: // 16-bit conditional, less than: if (xxxx < *address) { ... }
+        {
+            uint32_t addr = 0x80000000 | (a & 0xffffff);
+            int16_t d = 0;
+            unsigned src = findOffset(regs, addr, d);
+            if (src == NUM_REGS)
+            {
+                src = loadValue(regs, addr, code, ret);
+                d = 0;
+            }
+            appendCode(Encoder::lh(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
+            unsigned oldRet = ret;
+            unsigned dst = loadValue(regs, v, code, ret);
+            if (ret == oldRet)
+                appendCode(Encoder::nop(), code, ret);
+            appendCode(Encoder::slt(Encoder::Reg::AT, Encoder::Reg::AT, s_mapping[dst]), code, ret);
+            condition = Encoder::bne(Encoder::Reg::AT, Encoder::Reg::R0, 0);
+        }
+        break;
+        case 0xd3: // 16-bit conditional, greater than: if (xxxx > *address) { ... }
+        {
+            uint32_t addr = 0x80000000 | (a & 0xffffff);
+            int16_t d = 0;
+            unsigned src = findOffset(regs, addr, d);
+            if (src == NUM_REGS)
+            {
+                src = loadValue(regs, addr, code, ret);
+                d = 0;
+            }
+            appendCode(Encoder::lh(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
+            unsigned oldRet = ret;
+            unsigned dst = loadValue(regs, v, code, ret);
+            if (ret == oldRet)
+                appendCode(Encoder::nop(), code, ret);
+            appendCode(Encoder::slt(Encoder::Reg::AT, s_mapping[dst], Encoder::Reg::AT), code, ret);
+            condition = Encoder::bne(Encoder::Reg::AT, Encoder::Reg::R0, 0);
+        }
+        break;
+        case 0xe0: // 8-bit conditional, equal: if (xx == *address) { ... }
+        {
+            uint32_t addr = 0x80000000 | (a & 0xffffff);
+            int16_t d = 0;
+            unsigned src = findOffset(regs, addr, d);
+            if (src == NUM_REGS)
+            {
+                src = loadValue(regs, addr, code, ret);
+                d = 0;
+            }
+            appendCode(Encoder::lb(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
+            unsigned oldRet = ret;
+            unsigned dst = loadValue(regs, v, code, ret);
+            if (ret == oldRet)
+                appendCode(Encoder::nop(), code, ret);
+            appendCode(Encoder::subu(Encoder::Reg::AT, Encoder::Reg::AT, s_mapping[dst]), code, ret);
+            condition = Encoder::beq(Encoder::Reg::AT, Encoder::Reg::R0, 0);
+        }
+        break;
+        case 0xe1: // 8-bit conditional, not equal: if (xx != *address) { ... }
+        {
+            uint32_t addr = 0x80000000 | (a & 0xffffff);
+            int16_t d = 0;
+            unsigned src = findOffset(regs, addr, d);
+            if (src == NUM_REGS)
+            {
+                src = loadValue(regs, addr, code, ret);
+                d = 0;
+            }
+            appendCode(Encoder::lb(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
+            unsigned oldRet = ret;
+            unsigned dst = loadValue(regs, v, code, ret);
+            if (ret == oldRet)
+                appendCode(Encoder::nop(), code, ret);
+            appendCode(Encoder::subu(Encoder::Reg::AT, Encoder::Reg::AT, s_mapping[dst]), code, ret);
+            condition = Encoder::bne(Encoder::Reg::AT, Encoder::Reg::R0, 0);
+        }
+        break;
+        case 0xe2: // 8-bit conditional, less than: if (xx < *address) { ... }
+        {
+            uint32_t addr = 0x80000000 | (a & 0xffffff);
+            int16_t d = 0;
+            unsigned src = findOffset(regs, addr, d);
+            if (src == NUM_REGS)
+            {
+                src = loadValue(regs, addr, code, ret);
+                d = 0;
+            }
+            appendCode(Encoder::lb(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
+            unsigned oldRet = ret;
+            unsigned dst = loadValue(regs, v, code, ret);
+            if (ret == oldRet)
+                appendCode(Encoder::nop(), code, ret);
+            appendCode(Encoder::slt(Encoder::Reg::AT, Encoder::Reg::AT, s_mapping[dst]), code, ret);
+            condition = Encoder::bne(Encoder::Reg::AT, Encoder::Reg::R0, 0);
+        }
+        break;
+        case 0xe3: // 8-bit conditional, greater than: if (xx > *address) { ... }
+        {
+            uint32_t addr = 0x80000000 | (a & 0xffffff);
+            int16_t d = 0;
+            unsigned src = findOffset(regs, addr, d);
+            if (src == NUM_REGS)
+            {
+                src = loadValue(regs, addr, code, ret);
+                d = 0;
+            }
+            appendCode(Encoder::lb(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
+            unsigned oldRet = ret;
+            unsigned dst = loadValue(regs, v, code, ret);
+            if (ret == oldRet)
+                appendCode(Encoder::nop(), code, ret);
+            appendCode(Encoder::slt(Encoder::Reg::AT, s_mapping[dst], Encoder::Reg::AT), code, ret);
+            condition = Encoder::bne(Encoder::Reg::AT, Encoder::Reg::R0, 0);
+        }
+        break;
+        case 0x10: // 16-bit increment: *address += xxxx
         {
             unsigned oldRet = ret;
             uint32_t addr = 0x80000000 | (a & 0xffffff);
@@ -242,236 +413,101 @@ unsigned cheat_to_code(const void *cheat_, unsigned size, void *code_)
                 src = loadValue(regs, addr, code, ret);
                 d = 0;
             }
-            lockReg(regs, src);
-            unsigned dst = loadValue(regs, v, code, ret);
-            unlockReg(regs, src);
+            applyCondition(oldRet, 4);
+            appendCode(Encoder::lh(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
+            appendCode(Encoder::nop(), code, ret);
+            appendCode(Encoder::addiu(Encoder::Reg::AT, Encoder::Reg::AT, v), code, ret);
+            appendCode(Encoder::sh(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
+        }
+        break;
+        case 0x11: // 16-bit decrement: *address -= xxxx
+        {
+            unsigned oldRet = ret;
+            uint32_t addr = 0x80000000 | (a & 0xffffff);
+            int16_t d = 0;
+            unsigned src = findOffset(regs, addr, d);
+            if (src == NUM_REGS)
+            {
+                src = loadValue(regs, addr, code, ret);
+                d = 0;
+            }
+            applyCondition(oldRet, 4);
+            appendCode(Encoder::lh(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
+            appendCode(Encoder::nop(), code, ret);
+            appendCode(Encoder::addiu(Encoder::Reg::AT, Encoder::Reg::AT, -v), code, ret);
+            appendCode(Encoder::sh(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
+        }
+        break;
+        case 0x20: // 8-bit increment: *address += xx
+        {
+            unsigned oldRet = ret;
+            uint32_t addr = 0x80000000 | (a & 0xffffff);
+            int16_t d = 0;
+            unsigned src = findOffset(regs, addr, d);
+            if (src == NUM_REGS)
+            {
+                src = loadValue(regs, addr, code, ret);
+                d = 0;
+            }
+            applyCondition(oldRet, 4);
+            appendCode(Encoder::lb(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
+            appendCode(Encoder::nop(), code, ret);
+            appendCode(Encoder::addiu(Encoder::Reg::AT, Encoder::Reg::AT, v), code, ret);
+            appendCode(Encoder::sb(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
+        }
+        break;
+        case 0x21: // 8-bit decrement: *address -= xx
+        {
+            unsigned oldRet = ret;
+            uint32_t addr = 0x80000000 | (a & 0xffffff);
+            int16_t d = 0;
+            unsigned src = findOffset(regs, addr, d);
+            if (src == NUM_REGS)
+            {
+                src = loadValue(regs, addr, code, ret);
+                d = 0;
+            }
+            applyCondition(oldRet, 4);
+            appendCode(Encoder::lb(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
+            appendCode(Encoder::nop(), code, ret);
+            appendCode(Encoder::addiu(Encoder::Reg::AT, Encoder::Reg::AT, -v), code, ret);
+            appendCode(Encoder::sb(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
+        }
+        break;
 
-            applyCondition(oldRet, 1);
-            appendCode(Encoder::sh(s_mapping[dst], d, s_mapping[src]), code, ret);
-        }
-        break;
-        case 0xd0:
+            // case 0xd4: // Buttons/If
+            // case 0xd5: // Buttons/On
+            // case 0xd6: // Buttons/Off
+            // case 0xc0: // If/On
+
+        case 0x50: // Patch Code/Serial Repeater
         {
-            uint32_t addr = 0x80000000 | (a & 0xffffff);
-            int16_t d = 0;
-            unsigned src = findOffset(regs, addr, d);
-            if (src == NUM_REGS)
+            // nn = Number Of Times To Repeat
+            // bb = Offset Of Addresses
+            // dddd = Value To Increment Value By
+            // 5000nnbb dddd   ;\Slide Code aka Patch Code aka Serial Repeater
+            // aaaaaaaa eeee   ;/for i=0 to nn-1, [aaaaaaaa+(i*bb)]=dddd+(i*eeee), next i
+            // Writes nn addresses starting with aaaaaaaa incremented by bb. The starting value is dddd with an increment of eeee
+            // FF7 Have All Items
+            // 50006902 0001
+            // 8009CBE0 C600
+            // nn = 69h
+            // bb = 02h
+            // dddd = 0001h
+            // aaaaaaaa = 8009CBE0h
+            // eeee = C600h
+            uint8_t bb = a & 0xff;         // addr_offset
+            uint8_t nn = (a >> 16) & 0xff; // iterations
+
+            if (nn > 0)
             {
-                src = loadValue(regs, addr, code, ret);
-                d = 0;
+                unsigned index = loadValue(regs, 0, code, ret);
+                lockReg(regs, index);
+
+                unsigned addr_offset = loadValue(regs, bb, code, ret);
+                unsigned iterations = loadValue(regs, nn, code, ret);
+
             }
-            appendCode(Encoder::lh(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
-            unsigned oldRet = ret;
-            unsigned dst = loadValue(regs, v, code, ret);
-            if (ret == oldRet)
-                appendCode(Encoder::nop(), code, ret);
-            appendCode(Encoder::subu(Encoder::Reg::AT, Encoder::Reg::AT, s_mapping[dst]), code, ret);
-            condition = Encoder::beq(Encoder::Reg::AT, Encoder::Reg::R0, 0);
-        }
-        break;
-        case 0xd1:
-        {
-            uint32_t addr = 0x80000000 | (a & 0xffffff);
-            int16_t d = 0;
-            unsigned src = findOffset(regs, addr, d);
-            if (src == NUM_REGS)
-            {
-                src = loadValue(regs, addr, code, ret);
-                d = 0;
-            }
-            appendCode(Encoder::lh(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
-            unsigned oldRet = ret;
-            unsigned dst = loadValue(regs, v, code, ret);
-            if (ret == oldRet)
-                appendCode(Encoder::nop(), code, ret);
-            appendCode(Encoder::subu(Encoder::Reg::AT, Encoder::Reg::AT, s_mapping[dst]), code, ret);
-            condition = Encoder::bne(Encoder::Reg::AT, Encoder::Reg::R0, 0);
-        }
-        break;
-        case 0xd2:
-        {
-            uint32_t addr = 0x80000000 | (a & 0xffffff);
-            int16_t d = 0;
-            unsigned src = findOffset(regs, addr, d);
-            if (src == NUM_REGS)
-            {
-                src = loadValue(regs, addr, code, ret);
-                d = 0;
-            }
-            appendCode(Encoder::lh(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
-            unsigned oldRet = ret;
-            unsigned dst = loadValue(regs, v, code, ret);
-            if (ret == oldRet)
-                appendCode(Encoder::nop(), code, ret);
-            appendCode(Encoder::slt(Encoder::Reg::AT, Encoder::Reg::AT, s_mapping[dst]), code, ret);
-            condition = Encoder::bne(Encoder::Reg::AT, Encoder::Reg::R0, 0);
-        }
-        break;
-        case 0xd3:
-        {
-            uint32_t addr = 0x80000000 | (a & 0xffffff);
-            int16_t d = 0;
-            unsigned src = findOffset(regs, addr, d);
-            if (src == NUM_REGS)
-            {
-                src = loadValue(regs, addr, code, ret);
-                d = 0;
-            }
-            appendCode(Encoder::lh(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
-            unsigned oldRet = ret;
-            unsigned dst = loadValue(regs, v, code, ret);
-            if (ret == oldRet)
-                appendCode(Encoder::nop(), code, ret);
-            appendCode(Encoder::slt(Encoder::Reg::AT, s_mapping[dst], Encoder::Reg::AT), code, ret);
-            condition = Encoder::bne(Encoder::Reg::AT, Encoder::Reg::R0, 0);
-        }
-        break;
-        case 0xe0:
-        {
-            uint32_t addr = 0x80000000 | (a & 0xffffff);
-            int16_t d = 0;
-            unsigned src = findOffset(regs, addr, d);
-            if (src == NUM_REGS)
-            {
-                src = loadValue(regs, addr, code, ret);
-                d = 0;
-            }
-            appendCode(Encoder::lb(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
-            unsigned oldRet = ret;
-            unsigned dst = loadValue(regs, v, code, ret);
-            if (ret == oldRet)
-                appendCode(Encoder::nop(), code, ret);
-            appendCode(Encoder::subu(Encoder::Reg::AT, Encoder::Reg::AT, s_mapping[dst]), code, ret);
-            condition = Encoder::beq(Encoder::Reg::AT, Encoder::Reg::R0, 0);
-        }
-        break;
-        case 0xe1:
-        {
-            uint32_t addr = 0x80000000 | (a & 0xffffff);
-            int16_t d = 0;
-            unsigned src = findOffset(regs, addr, d);
-            if (src == NUM_REGS)
-            {
-                src = loadValue(regs, addr, code, ret);
-                d = 0;
-            }
-            appendCode(Encoder::lb(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
-            unsigned oldRet = ret;
-            unsigned dst = loadValue(regs, v, code, ret);
-            if (ret == oldRet)
-                appendCode(Encoder::nop(), code, ret);
-            appendCode(Encoder::subu(Encoder::Reg::AT, Encoder::Reg::AT, s_mapping[dst]), code, ret);
-            condition = Encoder::bne(Encoder::Reg::AT, Encoder::Reg::R0, 0);
-        }
-        break;
-        case 0xe2:
-        {
-            uint32_t addr = 0x80000000 | (a & 0xffffff);
-            int16_t d = 0;
-            unsigned src = findOffset(regs, addr, d);
-            if (src == NUM_REGS)
-            {
-                src = loadValue(regs, addr, code, ret);
-                d = 0;
-            }
-            appendCode(Encoder::lb(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
-            unsigned oldRet = ret;
-            unsigned dst = loadValue(regs, v, code, ret);
-            if (ret == oldRet)
-                appendCode(Encoder::nop(), code, ret);
-            appendCode(Encoder::slt(Encoder::Reg::AT, Encoder::Reg::AT, s_mapping[dst]), code, ret);
-            condition = Encoder::bne(Encoder::Reg::AT, Encoder::Reg::R0, 0);
-        }
-        break;
-        case 0xe3:
-        {
-            uint32_t addr = 0x80000000 | (a & 0xffffff);
-            int16_t d = 0;
-            unsigned src = findOffset(regs, addr, d);
-            if (src == NUM_REGS)
-            {
-                src = loadValue(regs, addr, code, ret);
-                d = 0;
-            }
-            appendCode(Encoder::lb(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
-            unsigned oldRet = ret;
-            unsigned dst = loadValue(regs, v, code, ret);
-            if (ret == oldRet)
-                appendCode(Encoder::nop(), code, ret);
-            appendCode(Encoder::slt(Encoder::Reg::AT, s_mapping[dst], Encoder::Reg::AT), code, ret);
-            condition = Encoder::bne(Encoder::Reg::AT, Encoder::Reg::R0, 0);
-        }
-        break;
-        case 0x10:
-        {
-            unsigned oldRet = ret;
-            uint32_t addr = 0x80000000 | (a & 0xffffff);
-            int16_t d = 0;
-            unsigned src = findOffset(regs, addr, d);
-            if (src == NUM_REGS)
-            {
-                src = loadValue(regs, addr, code, ret);
-                d = 0;
-            }
-            applyCondition(oldRet, 4);
-            appendCode(Encoder::lh(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
-            appendCode(Encoder::nop(), code, ret);
-            appendCode(Encoder::addiu(Encoder::Reg::AT, Encoder::Reg::AT, v), code, ret);
-            appendCode(Encoder::sh(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
-        }
-        break;
-        case 0x11:
-        {
-            unsigned oldRet = ret;
-            uint32_t addr = 0x80000000 | (a & 0xffffff);
-            int16_t d = 0;
-            unsigned src = findOffset(regs, addr, d);
-            if (src == NUM_REGS)
-            {
-                src = loadValue(regs, addr, code, ret);
-                d = 0;
-            }
-            applyCondition(oldRet, 4);
-            appendCode(Encoder::lh(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
-            appendCode(Encoder::nop(), code, ret);
-            appendCode(Encoder::addiu(Encoder::Reg::AT, Encoder::Reg::AT, -v), code, ret);
-            appendCode(Encoder::sh(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
-        }
-        break;
-        case 0x20:
-        {
-            unsigned oldRet = ret;
-            uint32_t addr = 0x80000000 | (a & 0xffffff);
-            int16_t d = 0;
-            unsigned src = findOffset(regs, addr, d);
-            if (src == NUM_REGS)
-            {
-                src = loadValue(regs, addr, code, ret);
-                d = 0;
-            }
-            applyCondition(oldRet, 4);
-            appendCode(Encoder::lb(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
-            appendCode(Encoder::nop(), code, ret);
-            appendCode(Encoder::addiu(Encoder::Reg::AT, Encoder::Reg::AT, v), code, ret);
-            appendCode(Encoder::sb(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
-        }
-        break;
-        case 0x21:
-        {
-            unsigned oldRet = ret;
-            uint32_t addr = 0x80000000 | (a & 0xffffff);
-            int16_t d = 0;
-            unsigned src = findOffset(regs, addr, d);
-            if (src == NUM_REGS)
-            {
-                src = loadValue(regs, addr, code, ret);
-                d = 0;
-            }
-            applyCondition(oldRet, 4);
-            appendCode(Encoder::lb(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
-            appendCode(Encoder::nop(), code, ret);
-            appendCode(Encoder::addiu(Encoder::Reg::AT, Encoder::Reg::AT, -v), code, ret);
-            appendCode(Encoder::sb(Encoder::Reg::AT, d, s_mapping[src]), code, ret);
         }
         break;
         }
